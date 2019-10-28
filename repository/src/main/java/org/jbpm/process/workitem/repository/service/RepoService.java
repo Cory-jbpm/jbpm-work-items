@@ -22,6 +22,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -41,6 +43,8 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 public class RepoService {
 
     private static final Logger logger = LoggerFactory.getLogger(RepoService.class);
+    public static final String CREATED = "Created";
+    public static final String UPDATED = "Updated";
 
     private String serviceInfoVarDeclaration = "var serviceinfo = ";
     private List<RepoData> services;
@@ -122,14 +126,68 @@ public class RepoService {
     }
     
     /*
+     * Service related operations with resultMap
+     */
+
+    public void addService(RepoData service, Map<String, List<String>> resultMap) {
+        List<RepoData> repoDataList = services.stream().filter(repoData -> repoData.getName().equals(service.getName())).collect(Collectors.toList());
+        if (repoDataList.isEmpty() && !services.isEmpty()) {
+            addNewService(service, resultMap);
+        } else {
+            updateService(service, resultMap, repoDataList);
+        }
+
+        listeners.forEach(listener -> listener.onServiceTaskAdded(service));
+    }
+
+    /*
      * Service related operations
      */
-    
-    public void addService(RepoData service) {        
+
+    public void addService(RepoData service) {
         services.add(service);
         storage.onAdded(service);
 
         listeners.forEach(listener -> listener.onServiceTaskAdded(service));
+    }
+
+    private void addNewService(RepoData service, Map<String, List<String>> resultMap) {
+        List<String> createdList = resultMap.get(CREATED);
+        if (createdList == null) {
+            createdList = new ArrayList<>();
+            resultMap.put(CREATED, createdList);
+        }
+        createdList.add(service.getName());
+        addService(service);
+    }
+
+    public void removeServiceTask(String serviceTaskId) {
+        Optional<RepoData> removeServiceTask = services.stream().filter(service -> service.getId().equals(serviceTaskId)).findFirst();
+
+        removeServiceTask.ifPresent(serviceTask -> {
+            RepoData removeRepoData = removeServiceTask.get();
+            if (removeRepoData.isEnabled()) {
+                disableService(removeRepoData.getId());
+            }
+
+            services.remove(removeRepoData);
+        });
+    }
+
+    private void updateService(RepoData service, Map<String, List<String>> resultMap, List<RepoData> updateRepoData) {
+        updateRepoData.forEach(repoData -> {
+            if (repoData.isEnabled()) {
+                disableService(repoData.getId());
+            }
+            services.remove(repoData);
+            List<String> updatedList = resultMap.get(UPDATED);
+            if (updatedList == null) {
+                updatedList = new ArrayList<>();
+                resultMap.put(UPDATED, updatedList);
+            }
+            updatedList.add(repoData.getName());
+        });
+        addService(service);
     }
 
     public List<RepoData> getServices() {
